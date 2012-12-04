@@ -1,9 +1,10 @@
 cron = require 'cron', http = require 'http', read = require 'read'
 
-startJob = (username, password, buildType) ->
+query = (path, username, password, callback) ->
+    console.log 'Querying ' + path
     options = {
         host: 'teamcity',
-        path: "/httpAuth/app/rest/builds/buildType:bt#{buildType},lookupLimit:1",
+        path: '/httpAuth/app/rest/' + path,
         method: 'GET',
         headers: {
             accept: 'application/json',
@@ -11,19 +12,23 @@ startJob = (username, password, buildType) ->
         }
     }
 
-    readBuilds = (response) ->
-        buildDataString = ''
+    readResult = (response) ->
+        resultString = ''
 
         response.on 'data', (lines) ->
-            buildDataString += lines
+            resultString += lines
             
         response.on 'end', ->
-            buildData = JSON.parse buildDataString
-            console.log buildData.status
+            json = JSON.parse resultString
+            callback(json)
 
+    call = http.request options, readResult
+    call.end()
+
+startJob = (username, password, buildType) ->
     runTask = ->
-        call = http.request options, readBuilds
-        call.end()
+        query "builds/buildType:bt#{buildType},lookupLimit:1", username, password, (response) ->
+            console.log response.status
 
     new cron.CronJob {
         cronTime: "*/10 * * * * *",
