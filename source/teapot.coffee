@@ -7,40 +7,45 @@ fs = require 'fs'
 username = null
 password = null
 projectId = process.argv[2]
+teamCity = null
 
-query = (path, headers, callback) ->
-    # console.log 'Querying ' + path
-    headers.authorization = 'Basic ' + new Buffer(username + ':' + password).toString 'base64'
-    options = { host: 'teamcity', path: path, method: 'GET', headers: headers }
+class TeamCity
+    constructor: (@host, username, password) ->
+        @authorization = 'Basic ' + new Buffer(username + ':' + password).toString 'base64'
 
-    call = http.request options, (response) ->
-        resultString = ''
-        response.on 'data', (lines) -> resultString += lines
-        response.on 'end', -> callback resultString
-    call.end()
+    queryProject: (projectId, callback) ->
+        @_queryJson "/httpAuth/app/rest/projects/id:#{projectId}", (project) -> 
+            callback project
 
-queryJson = (path, callback) ->
-    query path, { accept: 'application/json' }, (resultString) -> callback JSON.parse resultString
+    queryBuildStats: (buildType, callback) ->
+        @_queryDefault "/httpAuth/app/rest/builds/buildType:#{buildType.id},canceled:false/statistics/SuccessRate", (response) ->
+            callback(null, { name: buildType.name, status: (if response == '1' then 'SUCCESS' else 'FAILURE') })
 
-queryDefault = (path, callback) ->
-    query path, {}, callback, (resultString) -> callback resultString
+    _queryJson: (path, callback) ->
+        @_query path, { accept: 'application/json' }, (resultString) -> callback JSON.parse resultString
 
-queryProject = (projectId, callback) ->
-    queryJson "/httpAuth/app/rest/projects/id:#{projectId}", (project) -> 
-        callback project
+    _queryDefault: (path, callback) ->
+        @_query path, {}, callback, (resultString) -> callback resultString
 
-queryBuildStats = (buildType, callback) ->
-    queryDefault "/httpAuth/app/rest/builds/buildType:#{buildType.id},canceled:false/statistics/SuccessRate", (response) ->
-        callback(null, { name: buildType.name, status: (if response == '1' then 'SUCCESS' else 'FAILURE') })
+    _query: (path, headers, callback) ->
+        # console.log 'Querying ' + path
+        headers.authorization = @authorization
+        options = { host: @host, path: path, method: 'GET', headers: headers }
+
+        call = http.request options, (response) ->
+            resultString = ''
+            response.on 'data', (lines) -> resultString += lines
+            response.on 'end', -> callback resultString
+        call.end()
 
 createBuildStatQueries = (project) ->
-    chain = project.buildTypes.buildType.map (buildType) -> 
-        (callback) -> 
-            queryBuildStats buildType, callback   
+    chain = project.buildTypes.buildType.map (buildType) ->
+        (callback) ->
+            teamCity.queryBuildStats buildType, callback
 
 startJob = ->
     runTask = ->
-        queryProject projectId, (project) ->
+        teamCity.queryProject projectId, (project) ->
             async.parallel createBuildStatQueries(project), (err, queryResults) ->
                 fs.writeFile 'results.json', "{ name: #{project.name}, chain: #{JSON.stringify(queryResults)} }"
 
@@ -48,7 +53,6 @@ startJob = ->
 
 read { prompt: 'Username: '}, (er, user) ->
     read { prompt: 'Password: ', silent: true }, (er, pwd) ->
-        username = user
-        password = pwd
+        teamCity = new TeamCity 'teamcity', user, pwd
 
         startJob()
