@@ -19,7 +19,7 @@ class TeamCity
 
     queryBuildStats: (buildType, callback) ->
         @_queryDefault "/httpAuth/app/rest/builds/buildType:#{buildType.id},canceled:false/statistics/SuccessRate", (response) ->
-            callback(null, { name: buildType.name, status: (if response == '1' then 'SUCCESS' else 'FAILURE') })
+            callback null, { name: buildType.name, status: (if response == '1' then 'SUCCESS' else 'FAILURE') }
 
     _queryJson: (path, callback) ->
         @_query path, { accept: 'application/json' }, (resultString) -> callback JSON.parse resultString
