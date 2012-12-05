@@ -1,4 +1,4 @@
-=Usage=
+__Usage__
 
 Generates a valid teamwall dashboard output.
 
